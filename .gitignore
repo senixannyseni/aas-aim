@@ -1,0 +1,63 @@
+# AAS–AIM — repository-wide ignore rules
+# Keep source code, API contracts, migrations, test fixtures, and lockfiles tracked.
+
+# JavaScript / TypeScript dependencies and local package caches
+node_modules/
+.pnpm-store/
+.npm/
+
+# Generated frontend output and caches
+dist/
+.next/
+out/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Java and Python build/test output (for future workspace components)
+target/
+.gradle/
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local-only runtime data and scratch directories
+.local/
+.tmp/
+
+# Environment files may contain credentials. Commit only templates.
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+!.env.*.template
+
+# Debug logs and local editor / OS noise
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Phase 32: release traces are ephemeral run evidence, never committed snapshots.
+# CI must generate its own trace from the checked-out commit.
+qa/runtime/
+
+# Generated previews and historical validation artifacts
+/docs/visual-previews/
+/qa/*.json
+/docs/brand/PHASE*.json
+/apps/aim-next/phase*-demo.html

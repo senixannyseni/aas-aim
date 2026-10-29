@@ -1,0 +1,114 @@
+# Phase 23: fail-closed real-toolchain checks; requires reviewed pnpm-lock.yaml.
+# Local offline model checks do not replace the React/jsdom or Vite build gates.
+name: AIM Next UI quality
+on:
+  push:
+    paths:
+      - "apps/aim-next/**"
+      - "apps/web/package.json"
+      - "apps/web/src/**"
+      - "packages/aim-platform/**"
+      - "scripts/phase46-*.cjs"
+      - "scripts/phase46-39-*.py"
+      - "scripts/phase46-39-*.sh"
+      - "contracts/**"
+      - "design-system/**"
+      - "scripts/generate-design-tokens.mjs"
+      - "scripts/release-preflight.mjs"
+      - "scripts/release-validation.sh"
+      - "scripts/phase46-1-contract-gate.cjs"
+      - "scripts/github-private-bootstrap.sh"
+      - "scripts/github-private-bootstrap.test.mjs"
+      - "scripts/release-evidence.mjs"
+      - "scripts/release-evidence.test.mjs"
+      - "scripts/release-runtime-guards.mjs"
+      - "scripts/release-runtime-guards.test.mjs"
+      - "package.json"
+      - "scripts/lockfile-candidate-report.mjs"
+      - "scripts/lockfile-candidate-report.test.mjs"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/aim-next-ui.yml"
+  pull_request:
+    paths:
+      - "apps/aim-next/**"
+      - "apps/web/package.json"
+      - "apps/web/src/**"
+      - "packages/aim-platform/**"
+      - "scripts/phase46-*.cjs"
+      - "scripts/phase46-39-*.py"
+      - "scripts/phase46-39-*.sh"
+      - "contracts/**"
+      - "design-system/**"
+      - "scripts/generate-design-tokens.mjs"
+      - "scripts/release-preflight.mjs"
+      - "scripts/release-validation.sh"
+      - "scripts/phase46-1-contract-gate.cjs"
+      - "scripts/github-private-bootstrap.sh"
+      - "scripts/github-private-bootstrap.test.mjs"
+      - "scripts/release-evidence.mjs"
+      - "scripts/release-evidence.test.mjs"
+      - "scripts/release-runtime-guards.mjs"
+      - "scripts/release-runtime-guards.test.mjs"
+      - "package.json"
+      - "scripts/lockfile-candidate-report.mjs"
+      - "scripts/lockfile-candidate-report.test.mjs"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/aim-next-ui.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frontend-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "12.14.0"
+      # The same canonical release script is used by manual lockfile-candidate CI
+      # and reviewed-commit CI. Avoid drift between duplicate, partial gate lists.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install real Chromium audit prerequisites
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Run full canonical release script (frozen install, Vitest, build, 78-screen audit)
+        id: canonical_release
+        shell: bash
+        run: |
+          set -o pipefail
+          bash scripts/release-validation.sh 2>&1 | tee /tmp/aim-next-release-validation.log
+      - name: Bundle reviewable runtime diagnostics even after failure
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/aim-next-release-validation.log ]]; then
+            result=1
+            if [[ "${{ steps.canonical_release.outcome }}" == 'success' ]]; then result=0; fi
+            python3 scripts/phase46-39-collect-evidence.py \
+              --log /tmp/aim-next-release-validation.log \
+              --output qa/runtime/AAS-AIM-Phase46_39-Runtime-Evidence.zip \
+              --exit-code "$result"
+          else
+            echo 'No canonical release log generated; no diagnostic ZIP synthesized.'
+          fi
+      - name: Preserve release logs even when a gate fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aas-aim-reviewed-commit-release-log
+          path: |
+            /tmp/aim-next-release-validation.log
+            qa/runtime/phase32-release-gates.json
+            qa/runtime/phase46-36-mounted-visuals/
+            qa/runtime/AAS-AIM-Phase46_39-Runtime-Evidence.zip
+          if-no-files-found: warn
+          retention-days: 21

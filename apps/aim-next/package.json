@@ -1,0 +1,40 @@
+{
+  "name": "@bandha/aim-next",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Future AAS\u2013AIM 190-function frontend scope, separate from the foundation prototype",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node ../../scripts/phase46-6-bundle-audit.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --maxWorkers=1",
+    "test:model-offline": "node scripts/offline-regression.cjs",
+    "test:phase20": "vitest run src/FutureAimApp.phase20.accessibility.test.tsx",
+    "preview": "vite preview",
+    "test:phase21": "vitest run src/FutureAimApp.phase21.routes.test.tsx",
+    "test:phase22": "vitest run src/FutureAimApp.phase22.mobile-a11y.test.tsx",
+    "test:browser-e2e": "python3 scripts/browser-route-audit.py"
+  },
+  "engines": {
+    "node": ">=24 <27",
+    "pnpm": ">=12 <13"
+  },
+  "dependencies": {
+    "@bandha/aim-platform": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@testing-library/react": "16.3.3",
+    "@typescript/typescript6": "6.0.2",
+    "jsdom": "27.4.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
+  },
+  "packageManager": "pnpm@12.14.0"
+}

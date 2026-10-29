@@ -1,0 +1,392 @@
+# AAS–AIM — File 38
+# PROPOSED contract: not implemented, approved, or deployed by the Java backend.
+# Frontend view types in AssetRegister.tsx are NOT this wire format.
+# Contract status remains DRAFT until domain, security, and API reviews approve it.
+openapi: 3.2.1
+info:
+  title: Bandha AIM — Asset Register Read API
+  version: 0.1.0
+  description: |-
+    DRAFT read-only contract for the tenant-authorized Asset Register.
+    This describes proposed server behavior, not an existing endpoint.
+
+    The server is authoritative for tenant authorization, asset identity,
+    classification provenance, search results, pagination, and sorting.
+    The browser may present returned information but MUST NOT infer engineering
+    fitness, approval, or safety from any value in this response.
+
+    The optional riskClassification and evidenceAssessment fields carry
+    classification provenance. An absent or null field means NOT PROVIDED;
+    an object whose level/state is UNKNOWN means EXPLICITLY UNKNOWN. These
+    states MUST NOT be collapsed together by the client or server.
+
+    The frontend currently uses local search/pagination and a seven-field
+    presentation model. Before live integration, add a runtime-validated
+    adapter for this separate wire format and implement server-side paging.
+
+    Authentication is provisionally specified as HTTP bearer tokens.
+    Its selection and the access-token integration require security review;
+    existing apiClient.ts does not yet inject bearer credentials.
+servers:
+  - url: /api/v1
+    description: Proposed versioned same-origin AIM API base path
+tags:
+  - name: Assets
+    description: Authorized read-only asset register queries
+security:
+  - AimBearer: []
+paths:
+  /assets:
+    get:
+      tags: [Assets]
+      summary: List assets visible to the authorized caller
+      description: |-
+        Returns only assets within the caller's server-resolved tenant and
+        object-level authorization scope. The server MUST NEVER trust tenant
+        identity from user-supplied query parameters.
+
+        Filters are applied BEFORE pagination, and totals describe only the
+        authorized, filtered population. The order is ascending asset tag,
+        then ascending opaque asset ID as a deterministic tie-breaker.
+        A later cursor/snapshot mechanism may be required for high-churn data;
+        page numbers do not guarantee a fixed snapshot across requests.
+
+        Search follows the current presentation semantics: trim the query,
+        split on whitespace, and require every term to match somewhere in
+        asset ID, tag, name, type, or location, case-insensitively. Unicode
+        normalization/collation must be explicitly agreed in implementation.
+
+        No matching assets is a successful `200` response with an empty items
+        array. Backend outages or authorization failures MUST NOT be mapped to
+        successful empty results. Pages beyond the current valid range return
+        `400 INVALID_PAGE` rather than silently clipping the request.
+      operationId: listAssets
+      parameters:
+        - name: page
+          in: query
+          description: One-based page index; 1 is valid even for an empty register.
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Maximum records returned on this page.
+          required: false
+          schema:
+            type: integer
+            enum: [10, 25, 50]
+            default: 10
+        - name: search
+          in: query
+          description: Optional case-insensitive whitespace-delimited search terms.
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: risk
+          in: query
+          description: |-
+            Risk classification filter. NOT_PROVIDED matches both an absent
+            riskClassification and an explicit null; UNKNOWN only matches a
+            classification object with level UNKNOWN.
+          required: false
+          schema:
+            $ref: '#/components/schemas/RiskFilter'
+        - name: evidence
+          in: query
+          description: |-
+            Evidence status filter. NOT_PROVIDED matches absent/null
+            evidenceAssessment; UNKNOWN matches the explicit UNKNOWN state.
+          required: false
+          schema:
+            $ref: '#/components/schemas/EvidenceFilter'
+      responses:
+        '200':
+          description: Authorized filtered page, including an empty page for no matches.
+          headers:
+            Cache-Control:
+              description: Sensitive register responses must not be stored in caches.
+              schema:
+                type: string
+                const: no-store
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetListResponse'
+              examples:
+                noMatches:
+                  summary: Empty authorized result (not an API error)
+                  value:
+                    items: []
+                    pageInfo:
+                      page: 1
+                      pageSize: 10
+                      totalItems: 0
+                      totalPages: 1
+                      hasNextPage: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    AimBearer:
+      type: http
+      scheme: bearer
+      description: |-
+        PROPOSED OIDC-issued access token sent in Authorization: Bearer.
+        Server verifies identity, authorization, tenant scope, and per-record
+        visibility on every request. Token format/issuer/claims are not frozen.
+  headers:
+    RequestId:
+      description: Opaque diagnostic correlation identifier; not sensitive data.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    NoStore:
+      description: Prevents caching of potentially sensitive asset metadata.
+      schema:
+        type: string
+        const: no-store
+  schemas:
+    RiskLevel:
+      type: string
+      enum: [LOW, MODERATE, HIGH, CRITICAL, UNKNOWN]
+      description: Reported risk classification; not an operating-permission decision.
+    EvidenceState:
+      type: string
+      enum: [VALID, STALE, INVALID, UNAVAILABLE, MISSING, UNKNOWN]
+      description: Reported evidence state; VALID does not mean LOW risk or safe.
+    RiskFilter:
+      type: string
+      enum: [ALL, LOW, MODERATE, HIGH, CRITICAL, UNKNOWN, NOT_PROVIDED]
+      default: ALL
+    EvidenceFilter:
+      type: string
+      enum: [ALL, VALID, STALE, INVALID, UNAVAILABLE, MISSING, UNKNOWN, NOT_PROVIDED]
+      default: ALL
+    RiskClassification:
+      type: object
+      additionalProperties: false
+      required: [level, basisRecordId, assessedAt]
+      properties:
+        level:
+          $ref: '#/components/schemas/RiskLevel'
+        basisRecordId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Opaque reference to the controlled risk-assessment basis.
+        assessedAt:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp of this classification, not of asset creation.
+    EvidenceAssessment:
+      type: object
+      additionalProperties: false
+      required: [state, basisRecordId, evaluatedAt]
+      properties:
+        state:
+          $ref: '#/components/schemas/EvidenceState'
+        basisRecordId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Opaque reference to the controlled evidence-assessment basis.
+        evaluatedAt:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp when this evidence state was evaluated.
+    AssetSummary:
+      type: object
+      additionalProperties: false
+      required: [id, tag, name]
+      description: |-
+        Read-only authorized asset projection, not the asset write model.
+        Required text must be nonblank without leading/trailing whitespace or
+        control characters. IDs are opaque and case-sensitive.
+        Optional fields may be omitted or null without an inferred status.
+        A non-null classification requires a controlled basis reference.
+      properties:
+        id:
+          $ref: '#/components/schemas/AssetId'
+        tag:
+          $ref: '#/components/schemas/AssetTag'
+        name:
+          $ref: '#/components/schemas/AssetName'
+        assetType:
+          description: Authorized asset type label; null/omission means not provided.
+          oneOf:
+            - $ref: '#/components/schemas/AssetName'
+            - type: 'null'
+        location:
+          description: Authorized display location; null/omission means not provided.
+          oneOf:
+            - $ref: '#/components/schemas/AssetName'
+            - type: 'null'
+        riskClassification:
+          description: Omitted/null means NOT PROVIDED, not UNKNOWN or LOW.
+          oneOf:
+            - $ref: '#/components/schemas/RiskClassification'
+            - type: 'null'
+        evidenceAssessment:
+          description: Omitted/null means NOT PROVIDED, not UNKNOWN or VALID.
+          oneOf:
+            - $ref: '#/components/schemas/EvidenceAssessment'
+            - type: 'null'
+    AssetId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[^\s\x00-\x1F\x7F](?:[^\x00-\x1F\x7F]*[^\s\x00-\x1F\x7F])?$'
+    AssetTag:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[^\s\x00-\x1F\x7F](?:[^\x00-\x1F\x7F]*[^\s\x00-\x1F\x7F])?$'
+    AssetName:
+      type: string
+      minLength: 1
+      maxLength: 256
+      pattern: '^[^\s\x00-\x1F\x7F](?:[^\x00-\x1F\x7F]*[^\s\x00-\x1F\x7F])?$'
+    PageInfo:
+      type: object
+      additionalProperties: false
+      required: [page, pageSize, totalItems, totalPages, hasNextPage]
+      description: |-
+        totalItems counts ONLY authorized matches. totalPages is at least one,
+        including for totalItems=0. The server computes hasNextPage from
+        page/totalPages; page cannot exceed totalPages.
+        Cross-field arithmetic rules are server-tested contract invariants,
+        not fully expressible as simple property types.
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          enum: [10, 25, 50]
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 1
+        hasNextPage:
+          type: boolean
+    AssetListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, pageInfo]
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/AssetSummary'
+          description: |-
+            Unique asset IDs within each page, ordered by tag then ID.
+            The server must enforce uniqueness and ordering explicitly.
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId]
+      description: |-
+        Sanitized diagnostic response. Messages MUST NOT reveal cross-tenant
+        identities, SQL internals, access tokens, or private assessment data.
+        This response is not a substitute for server audit logging.
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_QUERY
+            - INVALID_PAGE
+            - UNAUTHENTICATED
+            - FORBIDDEN
+            - RATE_LIMITED
+            - INTERNAL_ERROR
+            - SERVICE_UNAVAILABLE
+        message:
+          type: string
+          minLength: 1
+          maxLength: 240
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 128
+  responses:
+    BadRequest:
+      description: Invalid query, invalid filter, or page outside valid range.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication required or invalid access token.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Caller lacks permission for the Asset Register operation.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: The caller's request rate was limited.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        Retry-After:
+          description: Retry delay in seconds, if the server provides one.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal error; never return an apparently empty result.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unavailable:
+      description: Backend unavailable; must not be represented as an empty register.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

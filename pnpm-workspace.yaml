@@ -1,0 +1,16 @@
+# AAS–AIM JavaScript/TypeScript workspace.
+# This file deliberately includes the foundation browser client and future-product client.
+# Java backend and Python engineering services are managed separately.
+packages:
+  - "apps/web"
+  - "apps/aim-next"
+  - "packages/aim-platform"
+
+# Reject incompatible Node.js/package engine declarations.
+engineStrict: true
+
+# Do not silently accept conflicting or missing peer dependencies.
+strictPeerDependencies: true
+
+# New dependencies should be recorded at exact versions for review.
+saveExact: true

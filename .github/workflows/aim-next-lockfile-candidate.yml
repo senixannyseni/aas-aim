@@ -1,0 +1,67 @@
+# Phase 25 — MANUAL registry-backed lockfile candidate generation.
+# This workflow intentionally cannot commit files or approve a release.
+name: AIM Next lockfile candidate (manual, unreviewed)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  generate-unreviewed-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "12.14.0"
+      - name: Do not overwrite an existing committed lockfile
+        run: |
+          if [[ -e pnpm-lock.yaml ]]; then
+            echo 'A committed lockfile already exists. Use the reviewed normal dependency-update process.' >&2
+            exit 1
+          fi
+      - name: Resolve an actual pnpm lockfile with package scripts disabled
+        run: pnpm install --lockfile-only --ignore-scripts
+      - name: Prove frozen lockfile consistency
+        run: pnpm install --lockfile-only --frozen-lockfile --ignore-scripts
+      - name: Run release candidate offline inventory unit checks
+        run: node --test scripts/lockfile-candidate-report.test.mjs scripts/github-private-bootstrap.test.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Test lockfile candidate through full production and browser gates
+        id: candidate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+          bash scripts/release-validation.sh
+      - name: Produce unreviewed dependency inventory and check status
+        env:
+          AIM_CANDIDATE_GATE_STATUS: ${{ steps.candidate.outcome == 'success' && 'PASS' || 'FAIL' }}
+        shell: bash
+        run: |
+          export AIM_PNPM_VERSION="$(pnpm --version)"
+          node scripts/lockfile-candidate-report.mjs
+      - name: Upload lockfile candidate for explicit human review
+        uses: actions/upload-artifact@v4
+        with:
+          name: aas-aim-phase25-lockfile-UNREVIEWED
+          path: |
+            pnpm-lock.yaml
+            qa/phase25-lockfile-candidate.json
+            qa/phase25-lockfile-candidate.md
+            qa/runtime/phase32-release-gates.json
+            qa/runtime/phase46-36-mounted-visuals/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Keep candidate test failures visible after uploading review artifact
+        if: steps.candidate.outcome != 'success'
+        run: |
+          echo 'Lockfile was generated but some candidate checks failed. Artifact requires review and fixes.' >&2
+          exit 1

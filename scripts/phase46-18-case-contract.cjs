@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+'use strict';
+/** Synthetic offline model contract; not React, TypeScript 7, or browser proof. */
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+require('./phase46-2-source-loader.cjs');
+const {CASE_REFERENCE_LIMIT,CASE_NOTE_LIMIT,CASE_NOTE_LENGTH,emptyInvestigationCase,
+  addCaseReference,removeCaseReference,addCaseNote,removeCaseNote,projectInvestigationCase}=require('../apps/aim-next/src/features/investigation/evidenceCase.ts');
+let passed=0;
+function check(label,fn){try{fn();passed++;}catch(e){throw new Error(label+': '+e.message);}}
+const entry=(key,extra={})=>({key,domain:'COR',kind:'Calculation trace',ownerRecordId:'C1',sourceRecordId:key,
+  reference:'SOURCE-'+key,supportingReference:null,revision:null,reportedAt:null,status:'DRAFT',authority:'SOURCE_REFERENCE',...extra});
+const index=Array.from({length:15},(_,i)=>entry('REF'+i));
+const empty=emptyInvestigationCase('A1');
+check('new state has matching asset id',()=>assert.equal(empty.assetId,'A1'));
+check('new case is empty',()=>assert.equal(empty.referenceKeys.length,0));
+check('new case has no notes',()=>assert.equal(empty.notes.length,0));
+check('case contains no approval status',()=>assert.equal(Object.hasOwn(empty,'approved'),false));
+check('case contains no network endpoint',()=>assert.equal(Object.hasOwn(empty,'url'),false));
+check('foreign source key refused',()=>assert.equal(addCaseReference(empty,'A1','PRIVATE',index),empty));
+check('foreign asset refused',()=>assert.equal(addCaseReference(empty,'A2','REF0',index),empty));
+const one=addCaseReference(empty,'A1','REF0',index);
+check('selected source indexed',()=>assert.deepEqual(one.referenceKeys,['REF0']));
+check('duplicate source refused',()=>assert.equal(addCaseReference(one,'A1','REF0',index),one));
+let many=empty;
+for(const item of index)many=addCaseReference(many,'A1',item.key,index);
+check('working set bounded',()=>assert.equal(many.referenceKeys.length,CASE_REFERENCE_LIMIT));
+check('post-limit addition blocked',()=>assert.equal(addCaseReference(many,'A1','REF14',index),many));
+check('blank note blocked',()=>assert.equal(addCaseNote(one,'A1','QUESTION',' ',null,index),one));
+check('oversize note blocked',()=>assert.equal(addCaseNote(one,'A1','QUESTION','x'.repeat(CASE_NOTE_LENGTH+1),null,index),one));
+check('untracked anchor blocked',()=>assert.equal(addCaseNote(one,'A1','QUESTION','text','REF1',index),one));
+check('foreign asset note blocked',()=>assert.equal(addCaseNote(one,'A2','QUESTION','text',null,index),one));
+check('unknown note kind blocked',()=>assert.equal(addCaseNote(one,'A1','APPROVED','text',null,index),one));
+const anchored=addCaseNote(one,'A1','OBSERVATION','  reported text   ','REF0',index);
+check('note content trimmed',()=>assert.equal(anchored.notes[0].text,'reported text'));
+check('anchor retained by key only',()=>assert.equal(anchored.notes[0].evidenceKey,'REF0'));
+check('next id advanced',()=>assert.equal(anchored.nextId,2));
+check('revoked index hides reference',()=>assert.equal(projectInvestigationCase(anchored,'A1',[]).references.length,0));
+check('revoked index hides anchored note',()=>assert.equal(projectInvestigationCase(anchored,'A1',[]).notes.length,0));
+check('revoked index reported as withdrawn',()=>assert.equal(projectInvestigationCase(anchored,'A1',[]).withdrawnCount,1));
+check('asset rotation hides notes',()=>assert.equal(projectInvestigationCase(anchored,'A2',index).notes.length,0));
+check('asset rotation hides references',()=>assert.equal(projectInvestigationCase(anchored,'A2',index).references.length,0));
+check('same asset retains authorized note',()=>assert.equal(projectInvestigationCase(anchored,'A1',index).notes.length,1));
+check('removing anchor removes attached note',()=>assert.equal(removeCaseReference(anchored,'REF0').notes.length,0));
+check('removing note works',()=>assert.equal(removeCaseNote(anchored,1).notes.length,0));
+let notes=empty;
+for(let i=0;i<CASE_NOTE_LIMIT+5;i++)notes=addCaseNote(notes,'A1','QUESTION','question '+i,null,index);
+check('notes bounded',()=>assert.equal(notes.notes.length,CASE_NOTE_LIMIT));
+check('notes id monotonic',()=>assert.equal(notes.nextId,CASE_NOTE_LIMIT+1));
+check('an unanchored question shown as unlinked',()=>assert.equal(projectInvestigationCase(notes,'A1',index).notes[0].evidence,null));
+const root=path.resolve(__dirname,'..');const read=relative=>fs.readFileSync(path.join(root,relative),'utf8');
+const nav=read('apps/aim-next/src/features/investigation/EngineeringEvidenceNavigator.tsx');
+const ui=read('apps/aim-next/src/features/investigation/EngineeringInvestigationCase.tsx');
+const host=read('apps/aim-next/src/features/investigation/CrossDomainInvestigation.tsx');
+const css=read('apps/aim-next/src/styles.css');
+check('navigator supplies ready-index-only entries',()=>assert.ok(nav.includes('assetId={context.asset.id} entries={entries} selected={selected}')));
+check('same scope-keyed navigator is preserved',()=>assert.ok(host.includes('props.corrosionScopeKey,props.inspectionScopeKey,asset.id')));
+check('component has no local or session storage',()=>assert.ok(!/localStorage|sessionStorage|indexedDB/.test(ui)));
+check('component has no backend calls',()=>assert.ok(!/\bfetch\(|axios\.|XMLHttpRequest/.test(ui)));
+check('component no export action',()=>assert.ok(!/download=|createObjectURL|navigator\.clipboard/.test(ui)));
+check('component clearly disclaims approval',()=>assert.ok(ui.includes('not a saved engineering case, finding')));
+check('component includes keyboard focus',()=>assert.ok(css.includes('.engineering-investigation-case :is(button,summary,select,textarea):focus-visible')));
+check('component can clear everything',()=>assert.ok(ui.includes('setDraft(emptyInvestigationCase(assetId))')));
+console.log(`PASS Phase 46.18 offline case contract: ${passed}/${passed}. NOT TypeScript 7/Vitest/Vite/Chromium.`);

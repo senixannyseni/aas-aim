@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+'use strict';
+const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');
+const root=path.resolve(__dirname,'..');const get=p=>fs.readFileSync(path.join(root,p),'utf8');
+const script=get('scripts/release-validation.sh');const registry=get('scripts/release-evidence.mjs');
+const proof=get('apps/aim-next/scripts/browser-phase46-36-visual-proof.py');const att=get('apps/aim-next/scripts/verify-phase46-37-mounted-evidence.py');
+let passed=0;const check=(v,msg)=>{assert(v,msg);passed++};
+check(get('apps/aim-next/index.html').includes('name="theme-color" content="#101b1d"'),'theme meta follows Bandha v1.8 teal');
+check(get('apps/aim-next/src/styles.css').includes('--bandha-v18-deep:#101b1d;'),'v1.8 deep teal preserved');
+check(get('apps/aim-next/src/styles.css').includes("font-family:'DM Sans'"),'AIM fonts unchanged');
+check(proof.includes("backend = page.locator('.next-sidebar-footer')"),'check offline state in DOM');
+check(proof.includes("if width <= 800:"),'responsive hidden sidebar handled');
+check(proof.includes('if not route:'),'home heading asserted only on home route');
+check(proof.includes("to_have_text('Asset Register'"),'asset route asserts actual asset heading');
+check(proof.includes("get_by_role('button', name='Toggle navigation')"),'mobile drawer genuinely opened');
+check(proof.includes("Close mobile navigation"),'mobile drawer closed before screenshot');
+check(proof.includes("meta[name=\"theme-color\"]"),'theme color checked at runtime');
+check(proof.includes("(output / 'evidence.json').unlink(missing_ok=True)"),'stale evidence removed');
+check(proof.includes("not in ('127.0.0.1', 'localhost')"),'only loopback preview permitted');
+for(const feature of ['MOUNTED_REACT_APP','sha256(blob)','timestampUtc','EXPECTED_NAMES','javascriptErrors','noHorizontalOverflow','syntheticScreenshot'])check(att.includes(feature),'attestation checks '+feature);
+check(script.includes('run_gate phase46_37_visual_attestation_contract node scripts/phase46-37-attestation-contract.cjs'),'offline contract in release');
+check(script.includes('run_gate mounted_chromium_visual_attestation python3 apps/aim-next/scripts/verify-phase46-37-mounted-evidence.py'),'attestation in release');
+check(registry.includes("'mounted_chromium_visual_attestation'"),'gate in evidence registry');
+check(script.indexOf('run_gate mounted_chromium_visual_proof') < script.indexOf('run_gate mounted_chromium_visual_attestation'),'attestation only after capture');
+check(script.indexOf('run_gate mounted_chromium_visual_attestation') < script.indexOf('run_gate phase46_10_release_integrity'),'final integrity follows attestation');
+for(const x of ['phase46_36_mounted_proof_contract','phase46_37_visual_attestation_contract'])check(registry.includes(`'${x}'`),'source gate '+x);
+check(get('.github/workflows/aim-next-ui.yml').includes('qa/runtime/phase46-36-mounted-visuals/'),'CI uploads attested evidence');
+console.log(`PASS Phase 46.37 runtime attestation contract ${passed}/${passed}`);

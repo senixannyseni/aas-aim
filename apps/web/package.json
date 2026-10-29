@@ -1,0 +1,41 @@
+{
+  "name": "@bandha/aim-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AAS\u2013AIM browser client prototype; engineering authority remains server-side.",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm run tokens:generate && vite",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm run tokens:check && pnpm run typecheck && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tokens:generate": "node ../../scripts/generate-design-tokens.mjs",
+    "tokens:check": "node ../../scripts/generate-design-tokens.mjs --check"
+  },
+  "engines": {
+    "node": ">=24 <27",
+    "pnpm": ">=12 <13"
+  },
+  "packageManager": "pnpm@12.14.0",
+  "dependencies": {
+    "@bandha/aim-platform": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "jsdom": "27.4.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.5",
+    "yaml": "2.9.1"
+  }
+}

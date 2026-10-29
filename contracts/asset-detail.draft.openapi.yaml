@@ -1,0 +1,83 @@
+# AAS-AIM Phase 45.4 — PROPOSED. NOT implemented, authorized or deployed.
+# Existing asset-register.openapi.yaml remains unchanged.
+openapi: 3.1.0
+info:
+  title: AAS-AIM Draft Authorized Asset Detail Read API
+  version: 0.1.0-draft
+  description: >-
+    Proposed independently authorized, read-only detail response. Stable asset identity,
+    revision identity and governing revision identity are distinct. Reporting RELEASED
+    is not an engineering safety or approval operation.
+servers:
+  - url: /api/v1
+security:
+  - AimBearer: []
+paths:
+  /assets/{assetId}:
+    get:
+      operationId: getAssetDetail
+      description: >-
+        The server MUST authorize this exact asset for the current subject and scope,
+        independently of any earlier register-page access. The client does not supply
+        a tenant or claim approval. Sensitive responses MUST use Cache-Control no-store.
+        The response asset.id MUST equal the requested assetId.
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]{1,128}$'
+      responses:
+        '200':
+          description: Authorized Asset Detail for the requested exact identity.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetDetailResponse'
+        '400': { description: Invalid asset identity }
+        '401': { description: Authentication required }
+        '403': { description: Access denied }
+        '404': { description: No accessible matching asset; do not reveal record existence }
+        '429': { description: Rate limit }
+        '500': { description: Service error }
+        '503': { description: Service unavailable }
+components:
+  securitySchemes:
+    AimBearer:
+      type: http
+      scheme: bearer
+  schemas:
+    AssetDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [asset, revision, governingRevisionId]
+      properties:
+        asset:
+          type: object
+          additionalProperties: false
+          required: [id, tag, name]
+          properties:
+            id: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+            tag: { type: string, minLength: 1, maxLength: 128 }
+            name: { type: string, minLength: 1, maxLength: 256 }
+            assetType: { type: [string, 'null'], maxLength: 256 }
+            location: { type: [string, 'null'], maxLength: 256 }
+        revision:
+          type: object
+          additionalProperties: false
+          required: [id, label, state, changedAt, sourceReference]
+          properties:
+            id: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+            label: { type: string, minLength: 1, maxLength: 128 }
+            state:
+              type: string
+              enum: [DRAFT, RELEASED, SUPERSEDED, WITHDRAWN]
+            changedAt: { type: string, format: date-time }
+            sourceReference: { type: string, minLength: 1, maxLength: 512 }
+        governingRevisionId:
+          type: [string, 'null']
+          pattern: '^[A-Za-z0-9_-]{1,128}$'

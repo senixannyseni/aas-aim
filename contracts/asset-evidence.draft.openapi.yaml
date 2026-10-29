@@ -1,0 +1,111 @@
+# AAS-AIM Phase 45.5 — PROPOSED; NO endpoint or authorization policy is implemented.
+openapi: 3.1.0
+info:
+  title: AAS-AIM Draft Authorized Asset Evidence Read API
+  version: 0.1.0-draft
+  description: >-
+    Paginated, separately authorized evidence metadata for one asset and one viewed
+    revision. The response MUST NOT disclose the existence, IDs, names or counts
+    of records outside the caller's authorized data scope. Availability is source
+    availability, not a grant of access to its content. USED_AS_BASIS must be
+    asserted by the owning engineering service, not inferred by the browser.
+servers:
+  - url: /api/v1
+security:
+  - AimBearer: []
+paths:
+  /assets/{assetId}/evidence:
+    get:
+      operationId: listAuthorizedAssetEvidence
+      summary: Authorized asset evidence metadata, never a source-content endpoint
+      description: >-
+        Authorize the caller, selected asset, selected view revision and each returned
+        item on EVERY request, including cursor requests. The HISTORICAL group may
+        contain only validated predecessor revisions of viewRevisionId; not newer
+        working revisions or arbitrary different revisions. DISPLAYED_REVISION
+        entries must match viewRevisionId. Return no restricted item or count.
+        Paginate a consistent authorized snapshot at most 20 items per page.
+        snapshotKey is server-issued, stable across the cursor series and bound to
+        the authorized projection; it is NOT an authorization credential. Cursors
+        are opaque and invalidated on authorization, scope or data-generation change.
+        When the consistency snapshot is unavailable, fail closed with an error.
+        Do not cache sensitive results (Cache-Control no-store).
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+        - name: viewRevisionId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+        - name: group
+          in: query
+          required: true
+          schema: { type: string, enum: [DISPLAYED_REVISION, HISTORICAL] }
+        - name: pageSize
+          in: query
+          required: true
+          schema: { type: integer, const: 20 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,256}$' }
+        - name: snapshotKey
+          in: query
+          required: false
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,256}$' }
+      responses:
+        '200':
+          description: One authorized page of source metadata; not evidence-body access.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetEvidencePage'
+        '400': { description: Invalid identity or cursor syntax }
+        '401': { description: Authentication required }
+        '403': { description: Unauthorized (never disclose item existence) }
+        '404': { description: Requested asset or revision not accessible }
+        '409': { description: Source-generation changed; request must restart }
+        '429': { description: Rate limit }
+        '500': { description: Service error }
+        '503': { description: Source unavailable }
+components:
+  securitySchemes:
+    AimBearer: { type: http, scheme: bearer }
+  schemas:
+    AssetEvidencePage:
+      type: object
+      additionalProperties: false
+      required: [assetId, viewRevisionId, group, snapshotKey, items, nextCursor]
+      properties:
+        assetId: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+        viewRevisionId: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+        group: { type: string, enum: [DISPLAYED_REVISION, HISTORICAL] }
+        snapshotKey: { type: string, pattern: '^[A-Za-z0-9_-]{1,256}$' }
+        nextCursor: { type: [string, 'null'], pattern: '^[A-Za-z0-9_-]{1,256}$' }
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/AuthorizedEvidenceItem'
+    AuthorizedEvidenceItem:
+      type: object
+      additionalProperties: false
+      required: [id, revisionId, kind, association, availability, quality,
+        sourceReference, basisReference, recordedAt]
+      properties:
+        id: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+        revisionId: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+        kind:
+          type: string
+          enum: [DOCUMENT, MEASUREMENT, INSPECTION, CALCULATION, OTHER]
+        association: { type: string, enum: [ASSOCIATED, USED_AS_BASIS] }
+        availability: { type: string, enum: [AVAILABLE, UNAVAILABLE] }
+        quality: { type: string, enum: [VALID, SUSPECT, REJECTED, UNKNOWN] }
+        sourceReference: { type: [string, 'null'], minLength: 1, maxLength: 512 }
+        basisReference: { type: [string, 'null'], minLength: 1, maxLength: 512 }
+        recordedAt: { type: string, format: date-time }
